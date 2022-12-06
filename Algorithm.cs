@@ -10,19 +10,181 @@ namespace grafa7
 {
     public static class Algorithm
     {
-        public static Bitmap AnalizeAndBinarize(out string text)
+        public static Bitmap AnalizeAndBinarize(out string text, Bitmap bmp, int range = 3, bool bruteForce = false)
         {
+            var localValues = GetLocalValues(bmp);
+
+            var globalMean = GetGlobalValues(bmp);
+
+            var histogram = getHistogramData(bmp);
+            Dictionary<string, double> names = new() { { "Otsu", 0 }, { "Niblack", 0 }, { "Mean Value", 0 }, /*{ "Mean Iterative Selection", 0 },*/ { "Entropy Selection", 0 }, { "Bernsen", 0 }, { "Suavola", 0 } };
+            if (bruteForce)
+            {
+                Bitmap[] bitmaps = new Bitmap[names.Count];
+                for (int i = 0; i < names.Count; i++)
+                {
+                    bitmaps[i] = (Bitmap)bmp.Clone();
+                }
+                Parallel.For(0, names.Count, (i) =>
+                {
+                    var newBmp = bitmaps[i];
+                    var name = names.ToArray()[i];
+                    switch (name.Key)
+                    {
+                        case "Otsu":
+                            {
+                                var forHistogram = getHistogramData(GetOtsu(newBmp));
+                                names[name.Key] = (forHistogram[0][255] / forHistogram[0][0]);
+                                break;
+                            }
+                        case "Niblack":
+                            {
+                                var forHistogram = getHistogramData(Niblack(newBmp, range));
+                                names[name.Key] = (forHistogram[0][255] / forHistogram[0][0]);
+                                break;
+                            }
+                        case "Mean Value":
+                            {
+                                var forHistogram = getHistogramData(HandThreshold(newBmp, globalMean));
+                                names[name.Key] = (forHistogram[0][255] / forHistogram[0][0]);
+                                break;
+                            }
+                        case "Mean Iterative Selection":
+                            {
+                                var forHistogram = getHistogramData(MeanISel(newBmp));
+                                names[name.Key] = (forHistogram[0][255] / forHistogram[0][0]);
+                                break;
+                            }
+                        case "Entropy Selection":
+                            {
+                                var forHistogram = getHistogramData(Entropy(newBmp));
+                                names[name.Key] = (forHistogram[0][255] / forHistogram[0][0]);
+                                break;
+                            }
+                        case "Bernsen":
+                            {
+                                var forHistogram = getHistogramData(Bernsen(newBmp, range));
+                                names[name.Key] = (forHistogram[0][255] / forHistogram[0][0]);
+                                break;
+                            }
+                        case "Suavola":
+                            {
+                                var forHistogram = getHistogramData(Sauvola(newBmp, range, 0.25, 50));
+                                names[name.Key] = (forHistogram[0][255] / forHistogram[0][0]);
+                                break;
+                            }
+
+                    }
+                });
+            }
+            else
+            if (((localValues[2] + localValues[1]) / 2.0) / globalMean > 1.2)
+            {
+                //Huge disperities -> locals but Niblack should have been excluded | oh well
+                if ((histogram[0][0] + histogram[0][255]) / histogram[0].Length * 100 > 3)
+                {
+                    //big noise
+                    text = "Sauvola";
+                    return Sauvola(bmp, range, 0.25, 50);
+                }
+                else
+                {
+                    //small noise
+                    text = "Niblack";
+                    return Niblack(bmp, range);
+                }
+            }
+            else
+            {
+                //globals ->
+                if ((histogram[0][0] + histogram[0][255]) / histogram[0].Length * 100 > 3)
+                {
+                    //big noise
+                    text = "Otsu";
+                    return GetOtsu(bmp);
+                }
+                else
+                {
+                    //binarize by mean value
+                    //small noise
+                    text = "Mean value";
+                    return HandThreshold(bmp, globalMean);
+                }
+            }
+
+            var bestAlg = names.Values.OrderBy(p => p).ToArray()[names.Count / 2]; //names.Values.Aggregate((x, y) => Math.Abs(x - 1) < Math.Abs(y - 1) ? x : y);
+            var resName = names.First(p => p.Value == bestAlg);
+            switch (resName.Key)
+            {
+                case "Otsu":
+                    {
+                        text = resName.Key;
+                        return GetOtsu(bmp);
+                    }
+                case "Niblack":
+                    {
+                        text = resName.Key;
+                        return Niblack(bmp, range);
+                    }
+                case "Mean Value":
+                    {
+                        text = resName.Key;
+                        return HandThreshold(bmp, globalMean);
+                    }
+                case "Mean Iterative Selection":
+                    {
+                        text = resName.Key;
+                        return MeanISel(bmp);
+                    }
+                case "Entropy Selection":
+                    {
+                        text = resName.Key;
+                        return Entropy(bmp);
+                    }
+                case "Bernsen":
+                    {
+                        text = resName.Key;
+                        return Bernsen(bmp, range);
+                    }
+                case "Suavola":
+                    {
+                        text = resName.Key;
+                        return Sauvola(bmp, range, 0.25, 50);
+                    }
+            }
+
+            text = "Error";
+            return null;
 
         }
 
+        public static Bitmap HandThreshold(Bitmap bmp, int threshold)
+        {
+            var data = bmp.LockBits(
+                new Rectangle(0, 0, bmp.Width, bmp.Height),
+                System.Drawing.Imaging.ImageLockMode.ReadWrite,
+                System.Drawing.Imaging.PixelFormat.Format24bppRgb
+            );
+            var bmpData = new byte[data.Stride * data.Height];
+
+            Marshal.Copy(data.Scan0, bmpData, 0, bmpData.Length);
+
+            for (int i = 0; i < bmpData.Length; i += 3)
+            {
+                if ((bmpData[i] + bmpData[i + 1] + bmpData[i + 2]) / 3 < threshold)
+                    bmpData[i] = bmpData[i + 1] = bmpData[i + 2] = 0;
+                else
+                    bmpData[i] = bmpData[i + 1] = bmpData[i + 2] = 255;
+
+            }
+            Marshal.Copy(bmpData, 0, data.Scan0, bmpData.Length);
+            bmp.UnlockBits(data);
+            return bmp;
+        }
         public static int[] GetLocalValues(Bitmap bmp, int range = 3)
         {
             byte[,] data = ImageTo2DByteArray(bmp);
             List<int> values = new();
-
-            BitmapData bmpData = bmp.LockBits(new Rectangle(0, 0, bmp.Width, bmp.Height), ImageLockMode.ReadWrite, PixelFormat.Format24bppRgb);
-            byte[] vs = new byte[bmpData.Stride * bmpData.Height];
-            Marshal.Copy(bmpData.Scan0, vs, 0, vs.Length);
 
             for (int y = 0; y < bmp.Height; y += range)
                 for (int x = 0; x < bmp.Width; x += range)
@@ -46,6 +208,22 @@ namespace grafa7
                     //liczymy contrast measure, ale na chuj???
                 }
             return new int[] { (int)values.Average(), values.Min(), values.Max() };
+        }
+
+        public static int GetGlobalValues(Bitmap bmp)
+        {
+            byte[,] data = ImageTo2DByteArray(bmp);
+
+            int mean = 0;
+            for (int i = 0; i < data.GetLength(0); i++)
+            {
+                for (int j = 0; j < data.GetLength(1); j++)
+                {
+
+                    mean += data[i, j];
+                }
+            }
+            return mean / data.Length;
         }
 
         public static Bitmap MeanISel(Bitmap bmp)

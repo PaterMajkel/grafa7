@@ -56,7 +56,9 @@ namespace grafa7
                 return;
             }
 
-            LocalAverage
+            imageToEdit = (Bitmap)sourceImage.Clone();
+            SourceImage.Source = ImageSourceFromBitmap(Algorithm.AnalizeAndBinarize(out string type, imageToEdit, (int)RangeSlider.Value, BruteForce.IsChecked!.Value));
+            LabelBoss.Content = "Sposób binaryzacji: " + type;
         }
     }
 }

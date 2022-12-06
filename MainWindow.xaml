@@ -11,7 +11,6 @@
             <MenuItem Header="_File">
                 <MenuItem Header="_Open" Click="OpenFile" />
                 <Separator />
-                <MenuItem Header="_Exit" Click="Exit" />
             </MenuItem>
             <MenuItem Header="_Actions">
                 <MenuItem Header="_Binarize" Click="Binarize" />
@@ -22,8 +21,15 @@
                 <RowDefinition Height="auto"></RowDefinition>
                 <RowDefinition Height="auto"></RowDefinition>
             </Grid.RowDefinitions>
-            <Label Content="Sposób binaryzacji: "></Label>
-            <Image Name="SourceImage"></Image>
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition></ColumnDefinition>
+                <ColumnDefinition></ColumnDefinition>
+                <ColumnDefinition></ColumnDefinition>
+            </Grid.ColumnDefinitions>
+            <Label Name="LabelBoss" Content="Sposób binaryzacji: "></Label>
+            <Slider Name="RangeSlider" Value="3" Minimum="1" Maximum="5" TickFrequency="1" IsSnapToTickEnabled="True" Grid.Column="1"></Slider>
+            <CheckBox Content="Brute" Grid.Column="2" Name="BruteForce"></CheckBox>
+            <Image Stretch="UniformToFill" Grid.Row="1" Grid.ColumnSpan="3" Name="SourceImage"></Image>
         </Grid>
 
 
