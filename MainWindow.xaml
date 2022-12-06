@@ -23,7 +23,7 @@
                 <RowDefinition Height="auto"></RowDefinition>
             </Grid.RowDefinitions>
             <Label Content="Sposób binaryzacji: "></Label>
-            <Image Name="image"></Image>
+            <Image Name="SourceImage"></Image>
         </Grid>
 
 

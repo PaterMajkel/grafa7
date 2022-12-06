@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Collections.Generic;
 using System.Drawing;
 using System.Drawing.Imaging;
 using System.Linq;
@@ -9,6 +10,43 @@ namespace grafa7
 {
     public static class Algorithm
     {
+        public static Bitmap AnalizeAndBinarize(out string text)
+        {
+
+        }
+
+        public static int[] GetLocalValues(Bitmap bmp, int range = 3)
+        {
+            byte[,] data = ImageTo2DByteArray(bmp);
+            List<int> values = new();
+
+            BitmapData bmpData = bmp.LockBits(new Rectangle(0, 0, bmp.Width, bmp.Height), ImageLockMode.ReadWrite, PixelFormat.Format24bppRgb);
+            byte[] vs = new byte[bmpData.Stride * bmpData.Height];
+            Marshal.Copy(bmpData.Scan0, vs, 0, vs.Length);
+
+            for (int y = 0; y < bmp.Height; y += range)
+                for (int x = 0; x < bmp.Width; x += range)
+                {
+                    int min = 255, max = 0;
+                    for (int z = y - range; z <= y + range; ++z)
+                    {
+                        if (z >= 0 && z < bmp.Height)
+                            for (int i = x - range; i <= x + range; ++i)
+                            {
+                                if (i >= 0 && i < bmp.Width)
+                                {
+                                    if (data[z, i] > max)
+                                        max = data[z, i];
+                                    if (data[z, i] < min)
+                                        min = data[z, i];
+                                }
+                            }
+                    }
+                    values.Add((max + min) / 2);
+                    //liczymy contrast measure, ale na chuj???
+                }
+            return new int[] { (int)values.Average(), values.Min(), values.Max() };
+        }
 
         public static Bitmap MeanISel(Bitmap bmp)
         {
@@ -114,6 +152,8 @@ namespace grafa7
 
             return bmp;
         }
+
+
 
         public static double[][] getHistogramData(Bitmap bmp)
         {
