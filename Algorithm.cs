@@ -1,4 +1,5 @@
-﻿using System.Drawing;
+﻿using System;
+using System.Drawing;
 using System.Drawing.Imaging;
 using System.Linq;
 using System.Runtime.InteropServices;
@@ -8,6 +9,111 @@ namespace grafa7
 {
     public static class Algorithm
     {
+
+        public static Bitmap MeanISel(Bitmap bmp)
+        {
+            BitmapData bitmapData = bmp.LockBits(new Rectangle(0, 0, bmp.Width, bmp.Height), ImageLockMode.ReadWrite, bmp.PixelFormat);
+
+            var bmpData = new byte[bitmapData.Stride * bitmapData.Height];
+            double[] histogramData = new double[256];
+
+            Marshal.Copy(bitmapData.Scan0, bmpData, 0, bmpData.Length);
+
+            for (int i = 0; i < bmpData.Length; i += 3)
+            {
+                histogramData[(bmpData[i] + bmpData[i + 1] + bmpData[i + 2]) / 3]++;
+            }
+
+            double Tk = 0, Tkt = 127;
+
+            while (Tk != Tkt)
+            {
+                double a = 0, b = 0, c = 0, d = 0;
+                for (int i = 0; i < Tkt; i++)
+                {
+                    a += i * histogramData[i];
+                }
+                for (int i = 0; i < Tkt; i++)
+                {
+                    b += histogramData[i];
+                }
+                if (b == 0) b++;
+                b *= 2;
+                for (int i = (int)Tkt; i < 255; i++)
+                {
+                    c += i * histogramData[i];
+                }
+                for (int i = (int)Tkt; i < 255; i++)
+                {
+                    d += histogramData[i];
+                }
+                if (d == 0) b++;
+                d *= 2;
+
+                Tkt = Tk;
+                Tk = (a / b) + (c / d);
+            }
+
+            for (int y = 0; y < bmpData.Length; y += 3)
+            {
+                if ((bmpData[y] + bmpData[y + 1] + bmpData[y + 2]) / 3 < Tk)
+                    bmpData[y] = bmpData[y + 1] = bmpData[y + 2] = 0;
+                else
+                    bmpData[y] = bmpData[y + 1] = bmpData[y + 2] = 255;
+            }
+
+            Marshal.Copy(bmpData, 0, bitmapData.Scan0, bmpData.Length);
+
+            bmp.UnlockBits(bitmapData);
+
+            return bmp;
+        }
+
+        public static Bitmap Entropy(Bitmap bmp)
+        {
+            BitmapData bitmapData = bmp.LockBits(new Rectangle(0, 0, bmp.Width, bmp.Height), ImageLockMode.ReadWrite, bmp.PixelFormat);
+
+            var bmpData = new byte[bitmapData.Stride * bitmapData.Height];
+            double[] histogramData = new double[256];
+
+            Marshal.Copy(bitmapData.Scan0, bmpData, 0, bmpData.Length);
+
+            for (int i = 0; i < bmpData.Length; i += 3)
+            {
+                histogramData[(bmpData[i] + bmpData[i + 1] + bmpData[i + 2]) / 3]++;
+            }
+
+            var pixelCount = bitmapData.Width * bitmapData.Height;
+
+            for (int i = 0; i < histogramData.Length; i++)
+            {
+                histogramData[i] /= (double)pixelCount;
+                histogramData[i] *= 100;
+            }
+            double sum = 0;
+
+            for (int i = 1; i < histogramData.Length; i++)
+            {
+                if (histogramData[i] != 0)
+                    sum += histogramData[i] * Math.Log(histogramData[i]);
+            }
+
+            sum *= -1;
+
+            for (int y = 0; y < bmpData.Length; y += 3)
+            {
+                if ((bmpData[y] + bmpData[y + 1] + bmpData[y + 2]) / 3 < sum)
+                    bmpData[y] = bmpData[y + 1] = bmpData[y + 2] = 0;
+                else
+                    bmpData[y] = bmpData[y + 1] = bmpData[y + 2] = 255;
+            }
+
+            Marshal.Copy(bmpData, 0, bitmapData.Scan0, bmpData.Length);
+
+            bmp.UnlockBits(bitmapData);
+
+            return bmp;
+        }
 
         public static double[][] getHistogramData(Bitmap bmp)
         {
@@ -55,23 +161,13 @@ namespace grafa7
             }
             bmp.UnlockBits(data);
 
-            if (histPlot == null)
-                return new double[][] { histogram, histogramB, histogramG, histogramR };
-
-            histPlot.Reset();
-            histPlot.Plot.AddScatter(xRow, histogram, Color.Black);
-            histPlot.Plot.AddScatter(xRow, histogramB, Color.Blue);
-            histPlot.Plot.AddScatter(xRow, histogramR, Color.Red);
-            histPlot.Plot.AddScatter(xRow, histogramG, Color.Green);
-
-            histPlot.Refresh();
-
             return new double[][] { histogram, histogramB, histogramG, histogramR };
+
         }
 
-        public static Bitmap GetOtsu(Bitmap bmp, WpfPlot plot)
+        public static Bitmap GetOtsu(Bitmap bmp)
         {
-            double[] histogram = getHistogramData(bmp, null)[0];
+            double[] histogram = getHistogramData(bmp)[0];
             double avgValue = 0;
             for (int i = 0; i < 256; i++)
             {
@@ -140,10 +236,181 @@ namespace grafa7
                     }
                 });
                 bmp.UnlockBits(bitmapData);
-                _ = getHistogramData(bmp, plot);
 
                 return bmp;
             }
+        }
+
+        public static Bitmap Bernsen(Bitmap bmp, int range = 3, int limit = 15)
+        {
+            byte[,] data = ImageTo2DByteArray(bmp);
+            byte[,] mean = new byte[bmp.Height, bmp.Width];
+            byte[,] contrast = new byte[bmp.Height, bmp.Width];
+
+            BitmapData bmpData = bmp.LockBits(new Rectangle(0, 0, bmp.Width, bmp.Height), ImageLockMode.ReadWrite, PixelFormat.Format24bppRgb);
+            byte[] vs = new byte[bmpData.Stride * bmpData.Height];
+            Marshal.Copy(bmpData.Scan0, vs, 0, vs.Length);
+
+            for (int y = 0; y < bmp.Height; ++y)
+                for (int x = 0; x < bmp.Width; ++x)
+                {
+                    int min = 255, max = 0;
+                    for (int z = y - range; z <= y + range; ++z)
+                    {
+                        if (z >= 0 && z < bmp.Height)
+                            for (int i = x - range; i <= x + range; ++i)
+                            {
+                                if (i >= 0 && i < bmp.Width)
+                                {
+                                    if (data[z, i] > max)
+                                        max = data[z, i];
+                                    if (data[z, i] < min)
+                                        min = data[z, i];
+                                }
+                            }
+                    }
+                    mean[y, x] = (byte)((max + min) / 2);
+                    //liczymy contrast measure, ale na chuj???
+                    contrast[y, x] = (byte)((max - min));
+                }
+
+            //no idea how to use it
+            for (int y = 0; y < bmp.Height; ++y)
+                for (int x = 0; x < bmp.Width; ++x)
+                {
+                    if (contrast[y, x] < limit)
+                        if (mean[y, x] >= 128)
+                            vs[y * bmpData.Stride + (x * 3)] = vs[y * bmpData.Stride + (x * 3 + 1)] = vs[y * bmpData.Stride + (x * 3 + 2)] = byte.MaxValue;
+                        else
+                            vs[y * bmpData.Stride + (x * 3)] = vs[y * bmpData.Stride + (x * 3 + 1)] = vs[y * bmpData.Stride + (x * 3 + 2)] = byte.MinValue;
+                    else
+                        if (data[y, x] >= mean[y, x])
+                        vs[y * bmpData.Stride + (x * 3)] = vs[y * bmpData.Stride + (x * 3 + 1)] = vs[y * bmpData.Stride + (x * 3 + 2)] = byte.MaxValue;
+                    else
+                        vs[y * bmpData.Stride + (x * 3)] = vs[y * bmpData.Stride + (x * 3 + 1)] = vs[y * bmpData.Stride + (x * 3 + 2)] = byte.MinValue;
+                }
+            Marshal.Copy(vs, 0, bmpData.Scan0, vs.Length);
+            bmp.UnlockBits(bmpData);
+            return bmp;
+        }
+
+        public static byte[,] ImageTo2DByteArray(Bitmap bmp)
+        {
+            int width = bmp.Width;
+            int height = bmp.Height;
+            BitmapData data = bmp.LockBits(new Rectangle(0, 0, width, height), ImageLockMode.ReadOnly, PixelFormat.Format24bppRgb);
+
+            byte[] bytes = new byte[height * data.Stride];
+            try
+            {
+                Marshal.Copy(data.Scan0, bytes, 0, bytes.Length);
+            }
+            finally
+            {
+                bmp.UnlockBits(data);
+            }
+
+            byte[,] result = new byte[height, width];
+            for (int y = 0; y < height; ++y)
+                for (int x = 0; x < width; ++x)
+                {
+                    int offset = y * data.Stride + x * 3;
+                    result[y, x] = (byte)((bytes[offset + 0] + bytes[offset + 1] + bytes[offset + 2]) / 3);
+                }
+            return result;
+        }
+        public static Bitmap Niblack(Bitmap bmp, int range, double k = 0.1)
+        {
+            byte[,] data = ImageTo2DByteArray(bmp);
+            byte[,] mean = new byte[bmp.Height, bmp.Width];
+            double[,] standardDeviation = new double[bmp.Height, bmp.Width];
+
+            BitmapData bmpData = bmp.LockBits(new Rectangle(0, 0, bmp.Width, bmp.Height), ImageLockMode.ReadWrite, PixelFormat.Format24bppRgb);
+            byte[] vs = new byte[bmpData.Stride * bmpData.Height];
+            Marshal.Copy(bmpData.Scan0, vs, 0, vs.Length);
+
+            for (int y = 0; y < bmp.Height; ++y)
+                for (int x = 0; x < bmp.Width; ++x)
+                {
+                    int min = 255, max = 0;
+                    for (int z = y - range; z <= y + range; ++z)
+                    {
+                        if (z >= 0 && z < bmp.Height)
+                            for (int i = x - range; i <= x + range; ++i)
+                            {
+                                if (i >= 0 && i < bmp.Width)
+                                {
+                                    if (data[z, i] > max)
+                                        max = data[z, i];
+                                    if (data[z, i] < min)
+                                        min = data[z, i];
+                                }
+                            }
+                    }
+                    mean[y, x] = (byte)((max + min) / 2);
+                    //liczymy contrast measure, ale na chuj???
+                    standardDeviation[y, x] = Math.Sqrt((Math.Pow(data[y, x] - mean[y, x], 2) + Math.Pow(min - mean[y, x], 2) + Math.Pow(max - mean[y, x], 2)) / 2);
+                }
+
+            //no idea how to use it
+            for (int y = 0; y < bmp.Height; ++y)
+                for (int x = 0; x < bmp.Width; ++x)
+                {
+                    if (data[y, x] < mean[y, x] - k * standardDeviation[y, x])
+                        vs[y * bmpData.Stride + (x * 3)] = vs[y * bmpData.Stride + (x * 3 + 1)] = vs[y * bmpData.Stride + (x * 3 + 2)] = byte.MinValue;
+                    else
+                        vs[y * bmpData.Stride + (x * 3)] = vs[y * bmpData.Stride + (x * 3 + 1)] = vs[y * bmpData.Stride + (x * 3 + 2)] = byte.MaxValue;
+                }
+            Marshal.Copy(vs, 0, bmpData.Scan0, vs.Length);
+            bmp.UnlockBits(bmpData);
+            return bmp;
+        }
+
+        public static Bitmap Sauvola(Bitmap bmp, int range, double k, int R)
+        {
+            byte[,] data = ImageTo2DByteArray(bmp);
+            byte[,] mean = new byte[bmp.Height, bmp.Width];
+            double[,] standardDeviation = new double[bmp.Height, bmp.Width];
+
+            BitmapData bmpData = bmp.LockBits(new Rectangle(0, 0, bmp.Width, bmp.Height), ImageLockMode.ReadWrite, PixelFormat.Format24bppRgb);
+            byte[] vs = new byte[bmpData.Stride * bmpData.Height];
+            Marshal.Copy(bmpData.Scan0, vs, 0, vs.Length);
+
+            for (int y = 0; y < bmp.Height; ++y)
+                for (int x = 0; x < bmp.Width; ++x)
+                {
+                    int min = 255, max = 0;
+                    for (int z = y - range; z <= y + range; ++z)
+                    {
+                        if (z >= 0 && z < bmp.Height)
+                            for (int i = x - range; i <= x + range; ++i)
+                            {
+                                if (i >= 0 && i < bmp.Width)
+                                {
+                                    if (data[z, i] > max)
+                                        max = data[z, i];
+                                    if (data[z, i] < min)
+                                        min = data[z, i];
+                                }
+                            }
+                    }
+                    mean[y, x] = (byte)((max + min) / 2);
+                    //liczymy contrast measure, ale na chuj???
+                    standardDeviation[y, x] = Math.Sqrt((Math.Pow(data[y, x] - mean[y, x], 2) + Math.Pow(min - mean[y, x], 2) + Math.Pow(max - mean[y, x], 2)) / 2);
+                }
+
+            //no idea how to use it
+            for (int y = 0; y < bmp.Height; ++y)
+                for (int x = 0; x < bmp.Width; ++x)
+                {
+                    if (data[y, x] < mean[y, x] * (1 + (k * ((standardDeviation[y, x] / R) - 1))))
+                        vs[y * bmpData.Stride + (x * 3)] = vs[y * bmpData.Stride + (x * 3 + 1)] = vs[y * bmpData.Stride + (x * 3 + 2)] = byte.MinValue;
+                    else
+                        vs[y * bmpData.Stride + (x * 3)] = vs[y * bmpData.Stride + (x * 3 + 1)] = vs[y * bmpData.Stride + (x * 3 + 2)] = byte.MaxValue;
+                }
+            Marshal.Copy(vs, 0, bmpData.Scan0, vs.Length);
+            bmp.UnlockBits(bmpData);
+            return bmp;
         }
     }
 }
